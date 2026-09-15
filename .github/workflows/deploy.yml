@@ -1,0 +1,44 @@
+name: RHM Dashboard Automatisierung
+
+on:
+  push:
+    branches: [ main ] # Führt das Skript aus, sobald du Code hochlädst
+  schedule:
+    - cron: '0 18 * * 1-5' # Läuft Mo-Fr jeden Tag um 18:00 Uhr (nach Börsenschluss)
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code herunterladen
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Abhängigkeiten installieren
+        run: |
+          pip install yfinance pandas numpy plotly
+
+      - name: Python-Skript ausführen (Dashboard generieren)
+        run: |
+          python main.py # Passe den Namen deines Skripts an, falls es anders heißt!
+
+      - name: GitHub Pages konfigurieren
+        uses: actions/configure-pages@v4
+
+      - name: HTML-Artefakt hochladen
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.' # Sucht im Hauptverzeichnis nach der index.html
+
+      - name: Auf GitHub Pages veröffentlichen
+        id: deployment
+        uses: actions/deploy-pages@v4

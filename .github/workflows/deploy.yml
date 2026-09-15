@@ -5,6 +5,7 @@ on:
     branches: [ main ] # Führt das Skript aus, sobald du Code hochlädst
   schedule:
     - cron: '0 18 * * 1-5' # Läuft Mo-Fr jeden Tag um 18:00 Uhr (nach Börsenschluss)
+  workflow_dispatch:
 
 permissions:
   contents: read

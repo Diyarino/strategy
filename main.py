@@ -116,11 +116,11 @@ fig = make_subplots(
         [{"type": "xy", "colspan": 2}, None]               # Zeile 5: Fuzzy Score über volle Breite
     ],
     subplot_titles=(
-        "Performance Auswertung (Strategie-Vergleich)", "",  # Für Zeile 1 (Tabelle)
-        "1. RSI-Strategie (Buy <= 30, Sell >= 50)", "2. Fuzzy-Strategie (Buy >= 80, Sell <= 20)",  # Zeile 2 (Nebeneinander)
-        "RSI (14) - Indikator", "",                        # Zeile 3
-        "Kaufsignal-Stärke in % (Indikator)", "",          # Zeile 4
-        "Fuzzy Gesamtscore (Multi-Indikator in %)", ""     # Zeile 5
+        "Performance Auswertung (Strategie-Vergleich)", "",  
+        "1. RSI-Strategie (Buy <= 30, Sell >= 50)", "2. Fuzzy-Strategie (Buy >= 80, Sell <= 20)",  
+        "RSI (14) - Indikator", "",                        
+        "Kaufsignal-Stärke in % (Indikator)", "",          
+        "Fuzzy Gesamtscore (Multi-Indikator in %)", ""     
     )
 )
 
@@ -163,7 +163,7 @@ fig.add_trace(go.Scatter(x=df.index, y=fuzzy_buy_signals, mode='markers', name='
 fig.add_trace(go.Scatter(x=df.index, y=fuzzy_sell_signals, mode='markers', name='Fuzzy Verkauf',
                          marker=dict(color='#DC2626', size=12, symbol='x', line=dict(color='black', width=1))), row=2, col=2)
 
-# --- Subplot 3: RSI (Zeile 3) ---
+# --- Subplot 3: RSI (Zeile 3 - Spspan über beide Spalten) ---
 fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], mode='lines', name='RSI', line=dict(color='#8B5CF6'), showlegend=False), row=3, col=1)
 fig.add_trace(go.Scatter(x=df.index, y=[30]*len(df), mode='lines', name='30er Grenze', line=dict(color='green', dash='dash', width=1.5), showlegend=False, opacity=0.7), row=3, col=1)
 fig.add_trace(go.Scatter(x=df.index, y=[50]*len(df), mode='lines', name='50er Grenze', line=dict(color='red', dash='dash', width=1.5), showlegend=False, opacity=0.7), row=3, col=1)
@@ -195,6 +195,15 @@ fig.update_layout(
     plot_bgcolor='white', paper_bgcolor='white'
 )
 
-# fig.show()
+# HTML erzeugen
+html_content = fig.to_html(include_plotlyjs='cdn')
 
-fig.write_html("index.html")
+# Das Manifest in den HTML-Kopf einfügen, damit das Handy es als App erkennt
+html_content = html_content.replace(
+    '<head>', 
+    '<head>\n<link rel="manifest" href="manifest.json">\n<meta name="apple-mobile-web-app-capable" content="yes">'
+)
+
+# Als index.html speichern
+with open("index.html", "w", encoding="utf-8") as f:
+    f.write(html_content)

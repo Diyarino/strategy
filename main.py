@@ -26,8 +26,28 @@ from plotly.subplots import make_subplots
 
 # List of stock tickers available for selection in the dropdown menu
 TICKERS = ["RHM.DE", "NVDA", "GOOGL", "META", "MSFT", "1810.HK", "TSM",
-           "ISRG", "AMZN", "AAPL", "BABA", "TSLA", "ASML", "INTC", "AMD",
-           "ENPH", "PLTR", "CRWD", "AVGO"]
+           "AMZN", "AAPL", "BABA", "TSLA", "ASML", "INTC", "AMD",
+           "PLTR", "AVGO"]
+
+# Dictionary mapping tickers to company names
+TICKER_NAMES = {
+    "RHM.DE": "Rheinmetall AG",
+    "NVDA": "NVIDIA Corporation",
+    "GOOGL": "Alphabet Inc.",
+    "META": "Meta Platforms Inc.",
+    "MSFT": "Microsoft",
+    "1810.HK": "Xiaomi Corporation",
+    "TSM": "TSMC",
+    "AMZN": "Amazon.com Inc.",
+    "AAPL": "Apple Inc.",
+    "BABA": "Alibaba Group",
+    "TSLA": "Tesla Inc.",
+    "ASML": "ASML Holding N.V.",
+    "INTC": "Intel Corporation",
+    "AMD": "AMD Inc.",
+    "PLTR": "Palantir Technologies",
+    "AVGO": "Broadcom Inc."
+}
 
 # Initial investment capital for backtesting simulations
 START_CAPITAL = 10000.0
@@ -36,25 +56,27 @@ START_CAPITAL = 10000.0
 # Plot Configuration
 # =============================================================================
 
-# Create Plotly subplot structure with 5 rows and 2 columns
+# Create Plotly subplot structure with 6 rows and 2 columns
 # Layout specifications:
 #   Row 1: Performance metrics table (spans both columns)
 #   Row 2: Price charts with strategy signals (split into 2 columns)
 #   Row 3: RSI indicator visualization (spans both columns)
 #   Row 4: Buy signal strength indicator (spans both columns)
 #   Row 5: Fuzzy logic total score (spans both columns)
+#   Row 6: Summary table with ticker info and safety percentages (spans both columns)
 fig = make_subplots(
-    rows=5, cols=2,
+    rows=6, cols=2,
     shared_xaxes=False,
-    vertical_spacing=0.06,
+    vertical_spacing=0.02,
     horizontal_spacing=0.08,
-    row_heights=[0.28, 0.26, 0.15, 0.15, 0.16],
+    row_heights=[0.16, 0.15, 0.11, 0.11, 0.11, 0.36],
     specs=[
         [{"type": "table", "colspan": 2}, None],
         [{"type": "xy"}, {"type": "xy"}],
         [{"type": "xy", "colspan": 2}, None],
         [{"type": "xy", "colspan": 2}, None],
-        [{"type": "xy", "colspan": 2}, None]
+        [{"type": "xy", "colspan": 2}, None],
+        [{"type": "table", "colspan": 2}, None]
     ],
     subplot_titles=(
         "Performance Evaluation (Strategy Comparison)",
@@ -62,13 +84,17 @@ fig = make_subplots(
         "2. Fuzzy Strategy (Buy >= 80, Sell <= 20)",
         "RSI (14) Indicator",
         "Buy Signal Strength in % (Indicator)",
-        "Fuzzy Total Score (Multi-Indicator in %)"
+        "Fuzzy Total Score (Multi-Indicator in %)",
+        "Summary: Ticker Analysis with Safety Percentages"
     )
 )
 
 # Initialize counters and collections for trace management
 all_traces_count = 0
 dropdown_buttons = []
+
+# Collection for summary table data
+summary_data = []
 
 # =============================================================================
 # Stock Data Processing Loop
@@ -214,6 +240,105 @@ for idx, ticker in enumerate(TICKERS):
     # Determine visibility: only the first ticker is visible initially
     is_visible = (idx == 0)
 
+    # -------------------------------------------------------------------------
+    # Calculate Current State and Safety Percentages
+    # -------------------------------------------------------------------------
+    
+    # Get the latest values
+    current_rsi = df['RSI'].iloc[-1] if pd.notna(df['RSI'].iloc[-1]) else 50.0
+    current_fuzzy_score = df['Fuzzy_Total_Score'].iloc[-1] if pd.notna(df['Fuzzy_Total_Score'].iloc[-1]) else 50.0
+    current_price = df['Close'].iloc[-1]
+    
+    # Determine current state for RSI (Long if RSI <= 30, Short if RSI >= 50, Neutral otherwise)
+    if current_rsi <= 30:
+        rsi_state = "LONG"
+    elif current_rsi >= 50:
+        rsi_state = "SHORT"
+    else:
+        rsi_state = "NEUTRAL"
+    
+    # Determine current state for Fuzzy (Long if score >= 80, Short if score <= 20, Neutral otherwise)
+    if current_fuzzy_score >= 80:
+        fuzzy_state = "LONG"
+    elif current_fuzzy_score <= 20:
+        fuzzy_state = "SHORT"
+    else:
+        fuzzy_state = "NEUTRAL"
+    
+    # Calculate safety percentages using linear interpolation
+    # RSI Rules: Buy <= 30 (100% safe), Sell >= 50 (0% safe for long)
+    # For LONG position safety:
+    #   - RSI of 30 = 100% safe (strong buy)
+    #   - RSI of 50 = 0% safe (strong sell for long)
+    #   - Linear interpolation between 30 and 50
+    if current_rsi <= 30:
+        rsi_long_safety_pct = 100.0
+    elif current_rsi >= 50:
+        rsi_long_safety_pct = 0.0
+    else:
+        # Linear interpolation: (50 - RSI) / (50 - 30) * 100
+        rsi_long_safety_pct = (50 - current_rsi) / 20 * 100
+    
+    # For SHORT position safety (inverse):
+    #   - RSI of 50 = 100% safe for short
+    #   - RSI of 30 = 0% safe for short
+    if current_rsi >= 50:
+        rsi_short_safety_pct = 100.0
+    elif current_rsi <= 30:
+        rsi_short_safety_pct = 0.0
+    else:
+        rsi_short_safety_pct = (current_rsi - 30) / 20 * 100
+    
+    # Fuzzy Rules: Buy >= 80 (100% safe for long), Sell <= 20 (0% safe for long)
+    # For LONG position safety:
+    #   - Score of 80 = 100% safe (strong buy)
+    #   - Score of 20 = 0% safe (strong sell)
+    #   - Linear interpolation between 20 and 80
+    if current_fuzzy_score >= 80:
+        fuzzy_long_safety_pct = 100.0
+    elif current_fuzzy_score <= 20:
+        fuzzy_long_safety_pct = 0.0
+    else:
+        # Linear interpolation: (Score - 20) / (80 - 20) * 100
+        fuzzy_long_safety_pct = (current_fuzzy_score - 20) / 60 * 100
+    
+    # For SHORT position safety (inverse):
+    #   - Score of 20 = 100% safe for short
+    #   - Score of 80 = 0% safe for short
+    if current_fuzzy_score <= 20:
+        fuzzy_short_safety_pct = 100.0
+    elif current_fuzzy_score >= 80:
+        fuzzy_short_safety_pct = 0.0
+    else:
+        fuzzy_short_safety_pct = (80 - current_fuzzy_score) / 60 * 100
+    
+    # Determine which safety percentage to show based on current state
+    if rsi_state == "LONG":
+        rsi_display_safety = rsi_long_safety_pct
+    elif rsi_state == "SHORT":
+        rsi_display_safety = rsi_short_safety_pct
+    else:
+        rsi_display_safety = rsi_long_safety_pct  # Show long safety for neutral
+    
+    if fuzzy_state == "LONG":
+        fuzzy_display_safety = fuzzy_long_safety_pct
+    elif fuzzy_state == "SHORT":
+        fuzzy_display_safety = fuzzy_short_safety_pct
+    else:
+        fuzzy_display_safety = fuzzy_long_safety_pct  # Show long safety for neutral
+    
+    # Store data for summary table
+    summary_data.append({
+        'ticker': ticker,
+        'company_name': TICKER_NAMES.get(ticker, "Unknown"),
+        'rsi_state': rsi_state,
+        'rsi_score': current_rsi,
+        'rsi_safety': rsi_display_safety,
+        'fuzzy_state': fuzzy_state,
+        'fuzzy_score': current_fuzzy_score,
+        'fuzzy_safety': fuzzy_display_safety
+    })
+    
     # -------------------------------------------------------------------------
     # Step 8: Add Visualization Traces
     # -------------------------------------------------------------------------
@@ -442,10 +567,88 @@ for idx, ticker in enumerate(TICKERS):
     )
 
 # =============================================================================
+# Create Summary Table with ALL Tickers (after the loop)
+# =============================================================================
+
+# Helper function to get background color based on state
+def get_state_color(state):
+    """Return hex color based on state: LONG=green, SHORT=red, NEUTRAL=white"""
+    if state == "LONG":
+        return '#d1fae5'  # Light green
+    elif state == "SHORT":
+        return '#fee2e2'  # Light red
+    else:
+        return '#f9fafb'  # Light gray/white
+
+# Build column values and colors for the summary table
+ticker_col = []
+company_col = []
+rsi_state_col = []
+rsi_score_col = []
+rsi_safety_col = []
+fuzzy_state_col = []
+fuzzy_score_col = []
+fuzzy_safety_col = []
+
+rsi_state_colors = []
+fuzzy_state_colors = []
+
+for data in summary_data:
+    ticker_col.append(data['ticker'])
+    company_col.append(data['company_name'])
+    rsi_state_col.append(data['rsi_state'])
+    rsi_score_col.append(f"{data['rsi_score']:.1f}")
+    rsi_safety_col.append(f"{data['rsi_safety']:.1f}%")
+    fuzzy_state_col.append(data['fuzzy_state'])
+    fuzzy_score_col.append(f"{data['fuzzy_score']:.1f}")
+    fuzzy_safety_col.append(f"{data['fuzzy_safety']:.1f}%")
+    
+    rsi_state_colors.append(get_state_color(data['rsi_state']))
+    fuzzy_state_colors.append(get_state_color(data['fuzzy_state']))
+
+# Add the summary table (only visible for first ticker selection, spans all)
+fig.add_trace(go.Table(
+    header=dict(
+        values=[
+            "<b>Ticker</b>",
+            "<b>Company Name</b>",
+            "<b>RSI State</b>",
+            "<b>RSI Score</b>",
+            "<b>RSI Safety %</b>",
+            "<b>Fuzzy State</b>",
+            "<b>Fuzzy Score</b>",
+            "<b>Fuzzy Safety %</b>"
+        ],
+        fill_color='#1e293b',
+        align='center',
+        font=dict(color='white', size=11)
+    ),
+    cells=dict(
+        values=[
+            ticker_col,
+            company_col,
+            rsi_state_col,
+            rsi_score_col,
+            rsi_safety_col,
+            fuzzy_state_col,
+            fuzzy_score_col,
+            fuzzy_safety_col
+        ],
+        fill_color=[rsi_state_colors, ['#ffffff'] * len(summary_data), rsi_state_colors,
+                    ['#ffffff'] * len(summary_data), ['#ffffff'] * len(summary_data),
+                    fuzzy_state_colors, ['#ffffff'] * len(summary_data), ['#ffffff'] * len(summary_data)],
+        align='center',
+        font=dict(color='black', size=9),
+        height=24
+    ),
+    visible=True  # Always visible
+), row=6, col=1)
+
+# =============================================================================
 # Dropdown Menu Configuration
 # =============================================================================
 
-# Each ticker adds 13 traces to the figure
+# Each ticker adds 13 traces to the figure (summary table is always visible)
 traces_per_ticker = 13
 
 for i, ticker in enumerate(TICKERS):
@@ -468,7 +671,7 @@ for i, ticker in enumerate(TICKERS):
 fig.update_layout(
     template="plotly_white",
     hovermode='x unified',
-    height=1750,
+    height=2600,
     title=dict(
         text="<b>RHM & Tech Stocks: Strategy Comparison</b>",
         x=0.03,

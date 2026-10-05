@@ -80,10 +80,26 @@ def process_full_history(ticker):
     df['Signal_Strength_Pct'] = 100 - ((df['RSI'] - 30) * (100 / 20))
     df['Signal_Strength_Pct'] = df['Signal_Strength_Pct'].clip(lower=0, upper=100)
     
+    
     score_rsi = df['Signal_Strength_Pct']
     sma_dist_pct = (df['Close'] - df['SMA_20']) / df['SMA_20'] * 100
-    score_trend = (-sma_dist_pct * 20).clip(lower=0, upper=100)
-    df['Fuzzy_Total_Score'] = (score_rsi * 0.7) + (score_trend * 0.3)
+    # Sanfterer Übergang: Fällt nicht mehr sofort auf 0, sondern startet neutral bei 50
+    score_trend = (50 - (sma_dist_pct * 10)).clip(lower=0, upper=100)
+    base_score = (score_rsi * 0.85) + (score_trend * 0.15)
+    
+    # Trend-Boost, wenn die Aktie seit mindestens 3 Tagen stabil über SMA_20 und SMA_50 läuft
+    sustained_trend = ((df['Close'] > df['SMA_20']) & (df['Close'] > df['SMA_50'])).rolling(window=3).sum() == 3
+    
+    # NEU: Trägheits-Puffer (Verkaufsschutz) – Solange wir in den letzten 5 Tagen überwiegend im Trend waren,
+    # halten wir den Score künstlich oben, damit ein kleiner Dip kein sofortiges Verkaufssignal auslöst.
+    trend_inertia = sustained_trend.rolling(window=5, min_periods=1).sum() > 0
+    
+    # Wenn der Trend-Boost oder die Trägheit aktiv ist, bleibt der Score hoch (85)
+    active_or_recent_trend = sustained_trend | trend_inertia
+    trend_boost = np.where(active_or_recent_trend, 85.0, 0.0)
+    
+    # Nimm das Maximum aus deiner bewährten Strategie und dem abgepufferten Trend-Boost
+    df['Fuzzy_Total_Score'] = np.maximum(base_score, trend_boost)
     df['Fuzzy_Total_Score'] = df['Fuzzy_Total_Score'].clip(lower=0, upper=100)
     
     return df
@@ -299,8 +315,9 @@ fig.update_yaxes(range=[0, 105], row=4, col=1)
 
 # Export and HTML Injection for 2 Independent Dropdowns
 html_content = fig.to_html(include_plotlyjs='cdn')
-html_content = html_content.replace('<head>', '<head>\n<meta name="viewport" content="width=device-width, initial-scale=1.0">')
-
+desktop_viewport_meta = '<meta name="viewport" content="width=1280">'
+desktop_style = '<style>body { min-width: 1280px; margin: 0; padding: 0; }</style>'
+html_content = html_content.replace('<head>', f'<head>\n{desktop_viewport_meta}\n{desktop_style}')
 # HTML Dropdown Controls & JS Code einfügen (mit doppelt maskierten Klammern für den f-string)
 controls_html = f"""
 <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 12px 20px; border-radius: 8px; margin: 10px 40px; display: flex; gap: 20px; align-items: center; font-family: sans-serif; font-size: 14px;">
